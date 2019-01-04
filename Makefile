@@ -40,7 +40,7 @@ OUTPUT_FILENAME = $(BOARD)_bootloader-$(GIT_VERSION)
 #******************************************************************************
 # Tool configure
 #******************************************************************************
-NRFUTIL = adafruit-nrfutil
+NRFUTIL = Build Tools/adafruit-nrfutil
 
 ifneq ($(JLINK),)
 NRFJPROG = nrfjprog -s $(JLINK)
