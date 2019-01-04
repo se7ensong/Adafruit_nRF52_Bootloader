@@ -17,7 +17,9 @@
 #include <string.h>
 #include "nrf_gpio.h"
 
-#if defined BOARD_FEATHER_NRF52840_EXPRESS
+#if defined BOARD_DNABAND_V4_1
+#include "boards/dnaband_v4_1.h"
+#elif defined BOARD_FEATHER_NRF52840_EXPRESS
   #include "boards/feather_nrf52840_express.h"
 #elif defined BOARD_FEATHER_NRF52832
   #include "boards/feather_nrf52832.h"
