@@ -41,8 +41,8 @@
 /* LED
  *------------------------------------------------------------------*/
 #define LEDS_NUMBER    2
-#define LED_PRIMARY_PIN          16
-#define LED_SECONDARY_PIN        18
+#define LED_PRIMARY_PIN          16 //Blue
+#define LED_SECONDARY_PIN        18 //Green
 #define LED_STATE_ON   1
 
 /*------------------------------------------------------------------*/
