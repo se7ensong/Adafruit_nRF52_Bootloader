@@ -188,7 +188,7 @@ int main(void)
   _ota_dfu = _ota_dfu  || ( button_pressed(BUTTON_DFU) && button_pressed(BUTTON_FRESET) ) ;
 
   bool const valid_app = bootloader_app_is_valid(DFU_BANK_0_REGION_START);
-
+  _ota_dfu = _ota_dfu || !valid_app;
   // App mode: register 1st reset and DFU startup (nrf52832)
   if ( ! (dfu_start || !valid_app) )
   {
@@ -215,7 +215,12 @@ int main(void)
   {
     if ( _ota_dfu )
     {
-      led_state(STATE_BLE_DISCONNECTED);
+      if (!valid_app) {
+        led_state(STATE_OTA_NOVALID_APP);
+      }
+      else {
+        led_state(STATE_BLE_DISCONNECTED);
+      }
       softdev_init(!sd_inited);
       sd_inited = true;
     }

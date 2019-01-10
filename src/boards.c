@@ -132,6 +132,9 @@ void pwm_teardown(NRF_PWM_Type* pwm )
   pwm->ENABLE            = 0;
 
   pwm->PSEL.OUT[0] = 0xFFFFFFFF;
+  pwm->PSEL.OUT[1] = 0xFFFFFFFF;
+  pwm->PSEL.OUT[2] = 0xFFFFFFFF;
+  pwm->PSEL.OUT[3] = 0xFFFFFFFF;
 
   pwm->MODE        = 0;
   pwm->COUNTERTOP  = 0x3FF;
@@ -264,6 +267,11 @@ void led_state(uint32_t state)
           #else
           primary_cycle_length = 300;
           #endif
+          break;
+
+        case STATE_OTA_NOVALID_APP:
+          new_rgb_color = 0xff0000;
+          primary_cycle_length = 500;
           break;
 
         default:

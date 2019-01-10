@@ -84,6 +84,7 @@ void board_teardown(void);
 #define STATE_WRITING_FINISHED 6
 #define STATE_BLE_CONNECTED 7
 #define STATE_BLE_DISCONNECTED 8
+#define STATE_OTA_NOVALID_APP 9
 
 void led_pwm_init(uint32_t led_index, uint32_t led_pin);
 void led_pwm_teardown(void);
