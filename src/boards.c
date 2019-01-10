@@ -200,7 +200,7 @@ void led_tick() {
     if (cycle > half_cycle) {
         cycle = primary_cycle_length - cycle;
     }
-    uint16_t duty_cycle = 0x4f * cycle / half_cycle;
+    uint16_t duty_cycle = 0xff * cycle / half_cycle;
     #if LED_STATE_ON == 1
     duty_cycle = 0xff - duty_cycle;
     #endif

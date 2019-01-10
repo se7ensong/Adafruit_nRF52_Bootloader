@@ -40,10 +40,15 @@
 /*------------------------------------------------------------------*/
 /* LED
  *------------------------------------------------------------------*/
-#define LEDS_NUMBER    2
-#define LED_PRIMARY_PIN          16 //Blue
-#define LED_SECONDARY_PIN        18 //Green
+#define LEDS_NUMBER    1
+#define LED_PRIMARY_PIN          11 //Red
 #define LED_STATE_ON   1
+
+#define LED_RGB_RED_PIN           11
+#define LED_RGB_GREEN_PIN         16
+#define LED_RGB_BLUE_PIN          18
+#define BOARD_RGB_BRIGHTNESS 0xFFFFFF // Allow full brightness
+
 
 /*------------------------------------------------------------------*/
 /* BUTTON
