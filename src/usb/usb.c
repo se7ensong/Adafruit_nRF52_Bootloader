@@ -1,38 +1,26 @@
-/**************************************************************************/
-/*!
-    @file     usb.c
-    @author   hathach (tinyusb.org)
-
-    @section LICENSE
-
-    Software License Agreement (BSD License)
-
-    Copyright (c) 2018, Adafruit Industries (adafruit.com)
-    All rights reserved.
-
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions are met:
-    1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-    2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-    3. Neither the name of the copyright holders nor the
-    names of its contributors may be used to endorse or promote products
-    derived from this software without specific prior written permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ''AS IS'' AND ANY
-    EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
-    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-/**************************************************************************/
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2018 Ha Thach for Adafruit Industries
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
 
 #include "nrfx.h"
 #include "nrfx_power.h"
@@ -52,32 +40,14 @@
 // MACRO TYPEDEF CONSTANT ENUM DECLARATION
 //--------------------------------------------------------------------+
 
-// from usb_desc.c for dynamic descriptor
-extern tusb_desc_device_t usb_desc_dev;
-extern usb_desc_cfg_t     usb_desc_cfg;
-
-// Serial string using unique Device ID
-extern uint16_t           usb_desc_str_serial[1+16];
-
 /* tinyusb function that handles power event (detected, ready, removed)
  * We must call it within SD's SOC event handler, or set it as power event handler if SD is not enabled. */
 extern void tusb_hal_nrf_power_event(uint32_t event);
 
-
 //------------- IMPLEMENTATION -------------//
-static bool _inited = false;
-
-bool usb_inited(void)
-{
-  return _inited;
-}
-
 void usb_init(bool cdc_only)
 {
-  // skipped if already inited
-  if ( _inited ) return;
-
-  _inited = true;
+  NVIC_SetPriority(USBD_IRQn, 2);
 
   // USB power may already be ready at this time -> no event generated
   // We need to invoke the handler based on the status initially
@@ -117,26 +87,9 @@ void usb_init(bool cdc_only)
     tusb_hal_nrf_power_event(NRFX_POWER_USB_EVT_READY);
   }
 
-  if ( cdc_only )
-  {
-    // Change PID to CDC only
-    usb_desc_dev.idProduct = USB_DESC_SERIAL_ONLY_PID;
+  usb_desc_init(cdc_only);
 
-    // Remove MSC interface = reduce total interface + adjust config desc length
-    usb_desc_cfg.config.bNumInterfaces--;
-    usb_desc_cfg.config.wTotalLength -= sizeof(usb_desc_cfg.msc);
-  }
-
-  // Create Serial string descriptor
-  char tmp_serial[17];
-  sprintf(tmp_serial, "%08lX%08lX", NRF_FICR->DEVICEID[1], NRF_FICR->DEVICEID[0]);
-
-  for(uint8_t i=0; i<16; i++)
-  {
-    usb_desc_str_serial[1+i] = tmp_serial[i];
-  }
-
-  // Init tusb stack
+  // Init TinyUSB stack
   tusb_init();
 }
 
@@ -147,7 +100,7 @@ void usb_teardown(void)
     // Abort all transfers
 
     // Disable pull up
-    nrf_usbd_pullup_disable();
+    nrf_usbd_pullup_disable(NRF_USBD);
 
     // Disable Interrupt
     NVIC_DisableIRQ(USBD_IRQn);
@@ -155,7 +108,7 @@ void usb_teardown(void)
     // disable all interrupt
     NRF_USBD->INTENCLR = NRF_USBD->INTEN;
 
-    nrf_usbd_disable();
+    nrf_usbd_disable(NRF_USBD);
     sd_clock_hfclk_release();
 
     sd_power_usbdetected_enable(false);

@@ -1,14 +1,27 @@
-/* Copyright (c) 2014 Nordic Semiconductor. All Rights Reserved.
+/*
+ * The MIT License (MIT)
  *
- * The information contained herein is property of Nordic Semiconductor ASA.
- * Terms and conditions of usage are described in detail in NORDIC
- * SEMICONDUCTOR STANDARD SOFTWARE LICENSE AGREEMENT.
+ * Copyright (c) 2018 Ha Thach for Adafruit Industries
  *
- * Licensees are granted free, non-transferable use of the information. NO
- * WARRANTY of ANY KIND is provided. This heading must NOT be removed from
- * the file.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
  */
+
 #ifndef BOARDS_H
 #define BOARDS_H
 
@@ -17,29 +30,12 @@
 #include <string.h>
 #include "nrf_gpio.h"
 
-#if defined BOARD_DNABAND_V4_1
-#include "boards/dnaband_v4_1.h"
-#elif defined BOARD_FEATHER_NRF52840_EXPRESS
-  #include "boards/feather_nrf52840_express.h"
-#elif defined BOARD_FEATHER_NRF52832
-  #include "boards/feather_nrf52832.h"
-#elif defined BOARD_PCA10056
-  #include "boards/pca10056.h"
-#elif defined BOARD_PCA10059
-  #include "boards/pca10059.h"
-#elif defined BOARD_PARTICLE_ARGON
-#include "boards/particle_argon.h"
-#elif defined BOARD_PARTICLE_BORON
-#include "boards/particle_boron.h"
-#elif defined BOARD_PARTICLE_XENON
-#include "boards/particle_xenon.h"
-#else
-  #error No boards defined
-#endif
+#include "board.h"
 
 #ifndef BUTTON_DFU
 #define BUTTON_DFU      BUTTON_1
 #endif
+
 #ifndef BUTTON_FRESET
 #define BUTTON_FRESET   BUTTON_2
 #endif
@@ -73,18 +69,17 @@ void board_teardown(void);
 // LED
 //--------------------------------------------------------------------+
 
-#define bit(b) (1UL << (b))
-
-#define STATE_BOOTLOADER_STARTED 0
-#define STATE_USB_MOUNTED 1
-#define STATE_USB_UNMOUNTED 2
-#define STATE_FACTORY_RESET_STARTED 3
-#define STATE_FACTORY_RESET_FINISHED 4
-#define STATE_WRITING_STARTED 5
-#define STATE_WRITING_FINISHED 6
-#define STATE_BLE_CONNECTED 7
-#define STATE_BLE_DISCONNECTED 8
-#define STATE_OTA_NOVALID_APP 9
+enum {
+  STATE_BOOTLOADER_STARTED = 0,
+  STATE_USB_MOUNTED,
+  STATE_USB_UNMOUNTED,
+  STATE_FACTORY_RESET_STARTED,
+  STATE_FACTORY_RESET_FINISHED,
+  STATE_WRITING_STARTED,
+  STATE_WRITING_FINISHED,
+  STATE_BLE_CONNECTED,
+  STATE_BLE_DISCONNECTED
+};
 
 void led_pwm_init(uint32_t led_index, uint32_t led_pin);
 void led_pwm_teardown(void);
@@ -101,16 +96,55 @@ void led_tick(void);
 #error "At least two buttons required in the BSP (see 'BUTTONS_NUMBER')"
 #endif
 
-static inline void button_init(uint32_t pin)
-{
-  nrf_gpio_cfg_sense_input(pin, BUTTON_PULL, NRF_GPIO_PIN_SENSE_LOW);
-}
-
-static inline bool button_pressed(uint32_t pin)
-{
-  return (nrf_gpio_pin_read(pin) == 0) ? true : false;
-}
+void button_init(uint32_t pin);
+bool button_pressed(uint32_t pin);
 
 bool is_ota(void);
+
+//--------------------------------------------------------------------+
+// DEBUG
+//--------------------------------------------------------------------+
+//#define CFG_DEBUG
+
+#ifdef CFG_DEBUG
+
+#include <stdio.h>
+
+#define PRINT_LOCATION()      printf("%s: %d:\n", __PRETTY_FUNCTION__, __LINE__)
+#define PRINT_MESS(x)         printf("%s: %d: %s \n"   , __FUNCTION__, __LINE__, (char*)(x))
+#define PRTNT_HEAP()          if (CFG_DEBUG == 3) printf("\n%s: %d: Heap free: %d\n", __FUNCTION__, __LINE__, util_heap_get_free_size())
+#define PRINT_STR(x)          printf("%s: %d: " #x " = %s\n"   , __FUNCTION__, __LINE__, (char*)(x) )
+#define PRINT_INT(x)          printf("%s: %d: " #x " = %ld\n"  , __FUNCTION__, __LINE__, (uint32_t) (x) )
+#define PRINT_HEX(x)          printf("%s: %d: " #x " = 0x%X\n"  , __FUNCTION__, __LINE__, (uint32_t) (x) )
+
+#define PRINT_BUFFER(buf, n) \
+  do {\
+    uint8_t const* p8 = (uint8_t const*) (buf);\
+    printf(#buf ": ");\
+    for(uint32_t i=0; i<(n); i++) printf("%x ", p8[i]);\
+    printf("\n");\
+  }while(0)
+
+#define ADALOG(tag, ...) \
+  do { \
+    if ( tag ) printf("[%s] ", tag);\
+    printf(__VA_ARGS__);\
+    printf("\n");\
+  }while(0)
+
+#else
+
+#define PRINT_LOCATION()
+#define PRINT_MESS(x)
+#define PRTNT_HEAP()
+#define PRINT_STR(x)
+#define PRINT_INT(x)
+#define PRINT_HEX(x)
+#define PRINT_BUFFER(buf, n)
+
+#define ADALOG(...)
+
+#endif
+
 
 #endif

@@ -1,11 +1,17 @@
-# Adafruit Bluefruit nRF52 Bootloader
+# Adafruit nRF52 Bootloader
+
+[![Build Status](https://github.com/adafruit/Adafruit_nRF52_Bootloader/workflows/Build/badge.svg)](https://github.com/adafruit/Adafruit_nRF52_Bootloader/actions)
 
 This is a CDC/DFU/UF2 bootloader for nRF52 boards.
 
 - [Adafruit Feather nRF52832](https://www.adafruit.com/product/3406)
 - [Adafruit Feather nRF52840 Express](https://www.adafruit.com/product/4062)
-- Nordic nRF52840DK PCA10056
-- Nordic nRF52840DK PCA10059 ("Dongle")
+- [Adafruit Circuit Playground Bluefruit](https://www.adafruit.com/product/4333)
+- Adafruit Metro nRF52840 Express
+- [Electronut Labs Papyr](https://docs.electronut.in/papyr/)
+- MakerDiary MDK nRF52840 USB Dongle
+- [Nordic nRF52840DK PCA10056](https://www.nordicsemi.com/Software-and-Tools/Development-Kits/nRF52840-DK)
+- [Nordic nRF52840DK PCA10059 ("Dongle")](https://www.nordicsemi.com/Software-and-Tools/Development-Kits/nRF52840-Dongle)
 - Particle Argon
 - Particle Boron
 - Particle Xenon
@@ -54,8 +60,8 @@ There are two pins, `DFU` and `FRST` that bootloader will check upon reset/power
 - `Double Reset` Reset twice within 500 ms will enter DFU with UF2 and CDC support (only works with nRF52840)
 - `DFU = LOW` and `FRST = HIGH`: Enter bootloader with UF2 and CDC support
 - `DFU = LOW` and `FRST = LOW`: Enter bootloader with OTA, to upgrade with a mobile application such as Nordic nrfConnect/Toolbox
-- `DFU = HIGH and `FRST = LOW`: Factory Reset mode: erase firmware application and its data
-- `DFU = HIGH and `FRST = HIGH`: Go to application code if it is present, otherwise enter DFU with UF2
+- `DFU = HIGH` and `FRST = LOW`: Factory Reset mode: erase firmware application and its data
+- `DFU = HIGH` and `FRST = HIGH`: Go to application code if it is present, otherwise enter DFU with UF2
 - The `GPREGRET` register can also be set to force the bootloader can enter any of above modes (plus a CDC-only mode for Arduino).
 `GPREGRET` is set by the application before performing a soft reset.
 
@@ -69,6 +75,20 @@ There is an adjacent ground pad.
 
 For other boards, please check the board definition for details.
 
+### Making your own UF2
+
+To create your own UF2 DFU update image, simply use the [Python conversion script](https://github.com/Microsoft/uf2/blob/master/utils/uf2conv.py) on a .bin file or .hex file, specifying the family as **0xADA52840**. If using a .bin file with the conversion script you must specify application address with the -b switch, this address depend on the SoftDevice size/version e.g S140 v6 is 0x26000 
+
+To create a UF2 image from a .bin file:
+```
+uf2conv.py firmware.bin -c -b 0x26000 -f 0xADA52840
+```
+
+To create a UF2 image from a .hex file:
+```
+uf2conv.py firmware.hex -c -f 0xADA52840
+```
+
 ## Burn & Upgrade with pre-built binaries
 
 You can burn and/or upgrade the bootloader with either a J-link or DFU (serial) to a specific pre-built binary version
@@ -77,7 +97,7 @@ This is preferred if you are not developing/customizing the bootloader.
 Pre-builtin binaries are available on GitHub [releases](https://github.com/adafruit/Adafruit_nRF52_Bootloader/releases)
 
 Note: The bootloader can be downgraded. Since the binary release is a merged version of
-of both bootloader and the Nordic SoftDevice, you can freely upgrade/downgrade to any version you like.
+both bootloader and the Nordic SoftDevice, you can freely upgrade/downgrade to any version you like.
 
 ## How to compile and build
 
@@ -89,7 +109,7 @@ You must have have  a J-Link available to "unbrick" your device.
 Prerequisites
 
 - ARM GCC
-- Nordic's [nRF5x Command Line Tools](http://infocenter.nordicsemi.com/index.jsp?topic=%2Fcom.nordic.infocenter.tools%2Fdita%2Ftools%2Fnrf5x_command_line_tools%2Fnrf5x_installation.html)
+- Nordic's [nRF5x Command Line Tools](https://www.nordicsemi.com/Software-and-Tools/Development-Tools/nRF-Command-Line-Tools)
 
 To build:
 
@@ -97,10 +117,16 @@ To build:
 make BOARD=feather_nrf52840_express all combinehex
 ```
 
-To flash the bootloader:
+To flash the bootloader with JLink:
 
 ```
 make BOARD=feather_nrf52840_express flash
+```
+
+To upgrade the bootloader using DFU Serial via port /dev/ttyACM0
+
+```
+make BOARD=feather_nrf52840_express SERIAL=/dev/ttyACM0 dfu-flash
 ```
 
 To flash SoftDevice (and chip erase):
@@ -137,7 +163,13 @@ Compiling file: main.c
 make: *** [_build/main.o] Error 127
 ```
 
-... you may need to edit the `Makefile` and update `GNU_INSTALL_ROOT` to point to the root path of your GCC ARM toolchain.
+... you may need to pass the location of the GCC ARM toolchain binaries to `make` using
+the variable `GNU_INSTALL_ROOT` as below:
+```
+$ make GNU_INSTALL_ROOT=/opt/gcc-arm-none-eabi-9-2019-q4-major/bin/ BOARD=feather_nrf52832 all
+```
+
+_Please note that the path needs a trailing path separator (a `/`)_
 
 #### 2. `mergehex: No such file or directory`
 

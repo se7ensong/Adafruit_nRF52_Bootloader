@@ -1,22 +1,28 @@
-/* Copyright (c) 2013 Nordic Semiconductor. All Rights Reserved.
+/*
+ * The MIT License (MIT)
  *
- * The information contained herein is property of Nordic Semiconductor ASA.
- * Terms and conditions of usage are described in detail in NORDIC
- * SEMICONDUCTOR STANDARD SOFTWARE LICENSE AGREEMENT.
+ * Copyright (c) 2018 Ha Thach for Adafruit Industries
  *
- * Licensees are granted free, non-transferable use of the information. NO
- * WARRANTY of ANY KIND is provided. This heading must NOT be removed from
- * the file.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
  */
 
-/**@file
- *
- * @defgroup ble_sdk_app_bootloader_main main.c
- * @{
- * @ingroup dfu_bootloader_api
- * @brief Bootloader project main file.
- *
+/**
  * -# Receive start data packet.
  * -# Based on start packet, prepare NVM area to store received data.
  * -# Receive data packet.
@@ -59,10 +65,10 @@
 #include "pstorage_platform.h"
 #include "nrf_mbr.h"
 #include "pstorage.h"
+#include "nrfx_nvmc.h"
 
-#include "nrf_nvmc.h"
 
-#ifdef NRF52840_XXAA
+#ifdef NRF_USBD
 #include "nrf_usbd.h"
 #include "tusb.h"
 
@@ -114,9 +120,12 @@ enum { BLE_CONN_CFG_HIGH_BANDWIDTH = 1 };
 #define APPDATA_ADDR_START              (BOOTLOADER_REGION_START-DFU_APP_DATA_RESERVED)
 
 #ifdef NRF52840_XXAA
-STATIC_ASSERT( APPDATA_ADDR_START == 0xED000);
+  // Flash 1024 KB
+  STATIC_ASSERT( APPDATA_ADDR_START == 0xED000);
+
 #else
-STATIC_ASSERT( APPDATA_ADDR_START == 0x6D000);
+  // Flash 512 KB
+  STATIC_ASSERT( APPDATA_ADDR_START == 0x6D000);
 #endif
 
 
@@ -274,11 +283,11 @@ void adafruit_factory_reset(void)
   // clear all App Data if any
   if ( DFU_APP_DATA_RESERVED )
   {
-    nrf_nvmc_page_erase(APPDATA_ADDR_START);
+    nrfx_nvmc_page_erase(APPDATA_ADDR_START);
   }
 
   // Only need to erase the 1st page of Application code to make it invalid
-  nrf_nvmc_page_erase(DFU_BANK_0_REGION_START);
+  nrfx_nvmc_page_erase(DFU_BANK_0_REGION_START);
 
   // back to normal
   led_state(STATE_FACTORY_RESET_FINISHED);
@@ -422,7 +431,7 @@ uint32_t proc_soc(void)
   {
     pstorage_sys_event_handler(soc_evt);
 
-#ifdef NRF52840_XXAA
+#ifdef NRF_USBD
     extern void tusb_hal_nrf_power_event(uint32_t event);
     /*------------- usb power event handler -------------*/
     int32_t usbevt = (soc_evt == NRF_EVT_POWER_USB_DETECTED   ) ? NRFX_POWER_USB_EVT_DETECTED:

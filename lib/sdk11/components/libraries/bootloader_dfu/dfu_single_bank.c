@@ -151,10 +151,10 @@ static void dfu_prepare_func_app_erase(uint32_t image_size)
 
     for ( uint32_t i = 0; i < page_count; i++ )
     {
-      nrf_nvmc_page_erase(DFU_BANK_0_REGION_START + i * CODE_PAGE_SIZE);
+      nrfx_nvmc_page_erase(DFU_BANK_0_REGION_START + i * CODE_PAGE_SIZE);
     }
 
-    // simulate complete call
+    // invoke complete callback
     pstorage_callback_handler(&m_storage_handle_app, PSTORAGE_CLEAR_OP_CODE, NRF_SUCCESS, NULL, 0);
   }
 }
@@ -790,6 +790,9 @@ uint32_t dfu_sd_image_validate(void)
         uint32_t image_end       = bootloader_settings.sd_image_start + 
                                    bootloader_settings.sd_image_size;
 
+        /* ##### FIX START ##### */
+        block_size &= ~(uint32_t)(CODE_PAGE_SIZE - 1); 
+        /* ##### FIX END ##### */       
         uint32_t img_block_start = bootloader_settings.sd_image_start + 2 * block_size;
         uint32_t sd_block_start  = sd_start + 2 * block_size;
 

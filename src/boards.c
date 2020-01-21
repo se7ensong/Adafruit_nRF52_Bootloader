@@ -1,38 +1,26 @@
-/**************************************************************************/
-/*!
-    @file     boards.c
-    @author   hathach (tinyusb.org)
-
-    @section LICENSE
-
-    Software License Agreement (BSD License)
-
-    Copyright (c) 2018, Adafruit Industries (adafruit.com)
-    All rights reserved.
-
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions are met:
-    1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-    2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
-    3. Neither the name of the copyright holders nor the
-    names of its contributors may be used to endorse or promote products
-    derived from this software without specific prior written permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ''AS IS'' AND ANY
-    EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-    DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
-    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-/**************************************************************************/
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2018 Ha Thach for Adafruit Industries
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
 
 #include "boards.h"
 #include "nrf_pwm.h"
@@ -46,10 +34,30 @@
 #define SCHED_QUEUE_SIZE                    30                               /**< Maximum number of events in the scheduler queue. */
 
 #if defined(LED_NEOPIXEL) || defined(LED_RGB_RED_PIN)
+  void neopixel_init(void);
   void neopixel_write(uint8_t *pixels);
+  void neopixel_teardown(void);
 #endif
 
 //------------- IMPLEMENTATION -------------//
+void button_init(uint32_t pin)
+{
+  if ( BUTTON_PULL == NRF_GPIO_PIN_PULLDOWN )
+  {
+    nrf_gpio_cfg_sense_input(pin, BUTTON_PULL, NRF_GPIO_PIN_SENSE_HIGH);
+  }
+  else
+  {
+    nrf_gpio_cfg_sense_input(pin, BUTTON_PULL, NRF_GPIO_PIN_SENSE_LOW);
+  }
+}
+
+bool button_pressed(uint32_t pin)
+{
+  uint32_t const active_state = (BUTTON_PULL == NRF_GPIO_PIN_PULLDOWN ? 1 : 0);
+  return nrf_gpio_pin_read(pin) == active_state;
+}
+
 void board_init(void)
 {
   // stop LF clock just in case we jump from application without reset
@@ -69,9 +77,8 @@ void board_init(void)
   led_pwm_init(LED_SECONDARY, LED_SECONDARY_PIN);
   #endif
 
-// use neopixel for use enumeration
+  // use neopixel for use enumeration
 #if defined(LED_NEOPIXEL) || defined(LED_RGB_RED_PIN)
-  extern void neopixel_init(void);
   neopixel_init();
 #endif
 
@@ -83,7 +90,6 @@ void board_init(void)
 
   // Configure Systick for led blinky
   NVIC_SetPriority(SysTick_IRQn, 7);
-  extern uint32_t SystemCoreClock;
   SysTick_Config(SystemCoreClock/1000);
 }
 
@@ -96,7 +102,6 @@ void board_teardown(void)
   led_pwm_teardown();
 
 #if defined(LED_NEOPIXEL) || defined(LED_RGB_RED_PIN)
-  extern void neopixel_teardown(void);
   neopixel_teardown();
 #endif
   // Button
@@ -254,9 +259,9 @@ void led_state(uint32_t state)
         case STATE_BLE_CONNECTED:
           new_rgb_color = 0x0000ff;
           #ifdef LED_SECONDARY_PIN
-          secondary_cycle_length = 500;
+          secondary_cycle_length = 3000;
           #else
-          primary_cycle_length = 500;
+          primary_cycle_length = 3000;
           #endif
           break;
 
@@ -305,10 +310,11 @@ void led_state(uint32_t state)
 #define MAGIC_T1H              13UL | (0x8000) // 0.8125us
 #define CTOPVAL                20UL            // 1.25us
 
-#define NEO_NUMBYTE  3
+#define BYTE_PER_PIXEL  3
 
-static uint16_t pixels_pattern[NEO_NUMBYTE * 8 + 2];
+static uint16_t pixels_pattern[NEOPIXELS_NUMBER*BYTE_PER_PIXEL * 8 + 2];
 
+// use PWM1 for neopixel
 void neopixel_init(void)
 {
   // To support both the SoftDevice + Neopixels we use the EasyDMA
@@ -318,7 +324,7 @@ void neopixel_init(void)
   //              totalMem = numBytes*8*2+(2*2)
   // The two additional bytes at the end are needed to reset the
   // sequence.
-  NRF_PWM_Type* pwm = NRF_PWM2;
+  NRF_PWM_Type* pwm = NRF_PWM1;
 
   // Set the wave mode to count UP
   // Set the PWM to use the 16MHz clock
@@ -354,29 +360,35 @@ void neopixel_init(void)
 
 void neopixel_teardown(void)
 {
-  uint8_t grb[3] = { 0, 0, 0 };
+  uint8_t rgb[3] = { 0, 0, 0 };
 
   NRFX_DELAY_US(50);  // wait for previous write is complete
 
-  neopixel_write(grb);
+  neopixel_write(rgb);
   NRFX_DELAY_US(50);  // wait for this write
 
-  pwm_teardown(NRF_PWM2);
+  pwm_teardown(NRF_PWM1);
 }
 
-// write 3 bytes color to a built-in neopixel
+// write 3 bytes color RGB to built-in neopixel
 void neopixel_write (uint8_t *pixels)
 {
-  uint8_t grb[NEO_NUMBYTE] = {pixels[1], pixels[2], pixels[0]};
+  // convert RGB to GRB
+  uint8_t grb[BYTE_PER_PIXEL] = {pixels[1], pixels[2], pixels[0]};
   uint16_t pos = 0;    // bit position
-  for ( uint16_t n = 0; n < NEO_NUMBYTE; n++ )
-  {
-    uint8_t pix = grb[n];
 
-    for ( uint8_t mask = 0x80; mask > 0; mask >>= 1 )
+  // Set all neopixel to same value
+  for (uint16_t n = 0; n < NEOPIXELS_NUMBER; n++ )
+  {
+    for(uint8_t c = 0; c < BYTE_PER_PIXEL; c++)
     {
-      pixels_pattern[pos] = (pix & mask) ? MAGIC_T1H : MAGIC_T0H;
-      pos++;
+      uint8_t const pix = grb[c];
+
+      for ( uint8_t mask = 0x80; mask > 0; mask >>= 1 )
+      {
+        pixels_pattern[pos] = (pix & mask) ? MAGIC_T1H : MAGIC_T0H;
+        pos++;
+      }
     }
   }
 
@@ -384,17 +396,16 @@ void neopixel_write (uint8_t *pixels)
   pixels_pattern[pos++] = 0 | (0x8000);    // Seq end
   pixels_pattern[pos++] = 0 | (0x8000);    // Seq end
 
-
-  NRF_PWM_Type* pwm = NRF_PWM2;
+  NRF_PWM_Type* pwm = NRF_PWM1;
 
   nrf_pwm_seq_ptr_set(pwm, 0, pixels_pattern);
   nrf_pwm_seq_cnt_set(pwm, 0, sizeof(pixels_pattern)/2);
   nrf_pwm_event_clear(pwm, NRF_PWM_EVENT_SEQEND0);
   nrf_pwm_task_trigger(pwm, NRF_PWM_TASK_SEQSTART0);
 
-  // no need to blocking wait for sequence complete
-//  while( !nrf_pwm_event_check(pwm, NRF_PWM_EVENT_SEQEND0) ) {}
-//  nrf_pwm_event_clear(pwm, NRF_PWM_EVENT_SEQEND0);
+  // blocking wait for sequence complete
+  while( !nrf_pwm_event_check(pwm, NRF_PWM_EVENT_SEQEND0) ) {}
+  nrf_pwm_event_clear(pwm, NRF_PWM_EVENT_SEQEND0);
 }
 #endif
 
@@ -417,8 +428,8 @@ void neopixel_init(void)
 
 void neopixel_teardown(void)
 {
-  uint8_t grb[3] = { 0, 0, 0 };
-  neopixel_write(grb);
+  uint8_t rgb[3] = { 0, 0, 0 };
+  neopixel_write(rgb);
   nrf_gpio_cfg_default(LED_RGB_RED_PIN);
   nrf_gpio_cfg_default(LED_RGB_GREEN_PIN);
   nrf_gpio_cfg_default(LED_RGB_BLUE_PIN);

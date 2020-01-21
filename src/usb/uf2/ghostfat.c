@@ -1,3 +1,4 @@
+#include "compile_date.h"
 
 #include "uf2.h"
 #include "flash_nrf5x.h"
@@ -47,7 +48,6 @@ typedef struct {
     uint16_t startCluster;
     uint32_t size;
 } __attribute__((packed)) DirEntry;
-
 STATIC_ASSERT(sizeof(DirEntry) == 32);
 
 struct TextFile {
@@ -59,11 +59,11 @@ struct TextFile {
 
 #define STR0(x) #x
 #define STR(x) STR0(x)
+
 const char infoUf2File[] = //
     "UF2 Bootloader " UF2_VERSION "\r\n"
-    "Model: " PRODUCT_NAME "\r\n"
-    "Board-ID: " BOARD_ID "\r\n"
-    "Bootloader: " BOOTLOADER_ID "\r\n"
+    "Model: " UF2_PRODUCT_NAME "\r\n"
+    "Board-ID: " UF2_BOARD_ID "\r\n"
     "Date: " __DATE__ "\r\n";
 
 const char indexFile[] = //
@@ -71,21 +71,32 @@ const char indexFile[] = //
     "<html>"
     "<body>"
     "<script>\n"
-    "location.replace(\"" INDEX_URL "\");\n"
+    "location.replace(\"" UF2_INDEX_URL "\");\n"
     "</script>"
     "</body>"
     "</html>\n";
 
+// WARNING -- code presumes only one NULL .content for .UF2 file
+//            and requires it be the last element of the array
 static struct TextFile const info[] = {
     {.name = "INFO_UF2TXT", .content = infoUf2File},
     {.name = "INDEX   HTM", .content = indexFile},
     {.name = "CURRENT UF2"},
 };
-#define NUM_INFO (sizeof(info) / sizeof(info[0]))
+
+// WARNING -- code presumes each non-UF2 file content fits in single sector
+//            Cannot programmatically statically assert .content length
+//            for each element above.
+STATIC_ASSERT(ARRAY_SIZE(indexFile) < 512);
+
+
+#define NUM_FILES (ARRAY_SIZE(info))
+#define NUM_DIRENTRIES (NUM_FILES + 1) // Code adds volume label as first root directory entry
+
 
 #define UF2_SIZE           (current_flash_size() * 2)
 #define UF2_SECTORS        (UF2_SIZE / 512)
-#define UF2_FIRST_SECTOR   (NUM_INFO + 1)
+#define UF2_FIRST_SECTOR   (NUM_FILES + 1) // WARNING -- code presumes each non-UF2 file content fits in single sector
 #define UF2_LAST_SECTOR    (UF2_FIRST_SECTOR + UF2_SECTORS - 1)
 
 #define RESERVED_SECTORS   1
@@ -97,6 +108,13 @@ static struct TextFile const info[] = {
 #define START_ROOTDIR      (START_FAT1 + SECTORS_PER_FAT)
 #define START_CLUSTERS     (START_ROOTDIR + ROOT_DIR_SECTORS)
 
+// all directory entries must fit in a single sector
+// because otherwise current code overflows buffer
+#define DIRENTRIES_PER_SECTOR (512/sizeof(DirEntry))
+
+STATIC_ASSERT(NUM_DIRENTRIES < DIRENTRIES_PER_SECTOR * ROOT_DIR_SECTORS);
+
+
 static FAT_BootBlock const BootBlock = {
     .JumpInstruction      = {0xeb, 0x3c, 0x90},
     .OEMInfo              = "UF2 UF2 ",
@@ -104,56 +122,57 @@ static FAT_BootBlock const BootBlock = {
     .SectorsPerCluster    = 1,
     .ReservedSectors      = RESERVED_SECTORS,
     .FATCopies            = 2,
-    .RootDirectoryEntries = (ROOT_DIR_SECTORS * 512 / 32),
+    .RootDirectoryEntries = (ROOT_DIR_SECTORS * DIRENTRIES_PER_SECTOR),
     .TotalSectors16       = NUM_FAT_BLOCKS - 2,
     .MediaDescriptor      = 0xF8,
     .SectorsPerFAT        = SECTORS_PER_FAT,
     .SectorsPerTrack      = 1,
     .Heads                = 1,
+	.PhysicalDriveNum     = 0x80, // to match MediaDescriptor of 0xF8
     .ExtendedBootSig      = 0x29,
     .VolumeSerialNumber   = 0x00420042,
-    .VolumeLabel          = VOLUME_LABEL,
+    .VolumeLabel          = UF2_VOLUME_LABEL,
     .FilesystemIdentifier = "FAT16   ",
 };
 
 #define NRF_LOG_DEBUG(...)
 #define NRF_LOG_WARNING(...)
 
-static WriteState _wr_state = { 0 };
-
 // get current.uf2 flash size in bytes, round up to 256 bytes
 static uint32_t current_flash_size(void)
 {
   static uint32_t flash_sz = 0;
+  uint32_t result = flash_sz; // presumes atomic 32-bit read/write and static result
 
   // only need to compute once
-  if ( flash_sz == 0 )
+  if ( result == 0 )
   {
     // return 1 block of 256 bytes
     if ( !bootloader_app_is_valid(DFU_BANK_0_REGION_START) )
     {
-      flash_sz = 256;
+      result = 256;
     }else
     {
       bootloader_settings_t const * boot_setting;
       bootloader_util_settings_get(&boot_setting);
 
-      flash_sz = boot_setting->bank_0_size;
+      result = boot_setting->bank_0_size;
 
       // Copy size must be multiple of 256 bytes
       // else we will got an issue copying current.uf2
-      if (flash_sz & 0xff)
+      if (result & 0xff)
       {
-        flash_sz = (flash_sz & ~0xff) + 256;
+        result = (result & ~0xff) + 256;
       }
 
       // if bank0 size is not valid, happens when flashed with jlink
       // use maximum application size
-      if ( (flash_sz == 0) || (flash_sz == 0xFFFFFFFFUL) )
+      if ( (result == 0) || (result == 0xFFFFFFFFUL) )
       {
-        flash_sz = FLASH_SIZE;
+        result = FLASH_SIZE;
       }
     }
+    flash_sz = result; // presumes atomic 32-bit read/write and static result
   }
 
   return flash_sz;
@@ -178,47 +197,73 @@ void read_block(uint32_t block_no, uint8_t *data) {
     memset(data, 0, 512);
     uint32_t sectionIdx = block_no;
 
-    if (block_no == 0) {
+    if (block_no == 0) { // Requested boot block
         memcpy(data, &BootBlock, sizeof(BootBlock));
         data[510] = 0x55;
         data[511] = 0xaa;
         // logval("data[0]", data[0]);
-    } else if (block_no < START_ROOTDIR) {
+    } else if (block_no < START_ROOTDIR) {  // Requested FAT table sector
         sectionIdx -= START_FAT0;
         // logval("sidx", sectionIdx);
         if (sectionIdx >= SECTORS_PER_FAT)
-            sectionIdx -= SECTORS_PER_FAT;
+            sectionIdx -= SECTORS_PER_FAT; // second FAT is same as the first...
         if (sectionIdx == 0) {
-            data[0] = 0xf0;
-            for (int i = 1; i < NUM_INFO * 2 + 4; ++i) {
+            data[0] = 0xf8; // first FAT entry must match BPB MediaDescriptor
+            // WARNING -- code presumes only one NULL .content for .UF2 file
+            //            and all non-NULL .content fit in one sector
+            //            and requires it be the last element of the array
+            for (int i = 1; i < NUM_FILES * 2 + 4; ++i) {
                 data[i] = 0xff;
             }
         }
-        for (int i = 0; i < 256; ++i) {
+        for (int i = 0; i < 256; ++i) { // Generate the FAT chain for the firmware "file"
             uint32_t v = sectionIdx * 256 + i;
             if (UF2_FIRST_SECTOR <= v && v <= UF2_LAST_SECTOR)
                 ((uint16_t *)(void *)data)[i] = v == UF2_LAST_SECTOR ? 0xffff : v + 1;
         }
-    } else if (block_no < START_CLUSTERS) {
+    } else if (block_no < START_CLUSTERS) { // Requested root directory sector
+
         sectionIdx -= START_ROOTDIR;
-        if (sectionIdx == 0) {
-            DirEntry *d = (void *)data;
+
+        DirEntry *d = (void *)data;
+        int remainingEntries = DIRENTRIES_PER_SECTOR;
+        if (sectionIdx == 0) { // volume label first
+            // volume label is first directory entry
             padded_memcpy(d->name, (char const *) BootBlock.VolumeLabel, 11);
             d->attrs = 0x28;
-            for (int i = 0; i < NUM_INFO; ++i) {
-                d++;
-                struct TextFile const *inf = &info[i];
-                d->size = inf->content ? strlen(inf->content) : UF2_SIZE;
-                d->startCluster = i + 2;
-                padded_memcpy(d->name, inf->name, 11);
-            }
+            d++;
+            remainingEntries--;
         }
+
+        for (int i = DIRENTRIES_PER_SECTOR * sectionIdx;
+             remainingEntries > 0 && i < NUM_FILES;
+             i++, d++) {
+
+            // WARNING -- code presumes all but last file take exactly one sector
+            uint16_t startCluster = i + 2;
+
+            struct TextFile const * inf = &info[i];
+            padded_memcpy(d->name, inf->name, 11);
+            d->createTimeFine   = __SECONDS_INT__ % 2 * 100;
+            d->createTime       = __DOSTIME__;
+            d->createDate       = __DOSDATE__;
+            d->lastAccessDate   = __DOSDATE__;
+            d->highStartCluster = startCluster >> 8;
+            // DIR_WrtTime and DIR_WrtDate must be supported
+            d->updateTime       = __DOSTIME__;
+            d->updateDate       = __DOSDATE__;
+            d->startCluster     = startCluster & 0xFF;
+            // WARNING -- code presumes only one NULL .content for .UF2 file
+            //            and requires it be the last element of the array
+            d->size = inf->content ? strlen(inf->content) : UF2_SIZE;
+        }
+
     } else {
         sectionIdx -= START_CLUSTERS;
-        if (sectionIdx < NUM_INFO - 1) {
+        if (sectionIdx < NUM_FILES - 1) {
             memcpy(data, info[sectionIdx].content, strlen(info[sectionIdx].content));
-        } else {
-            sectionIdx -= NUM_INFO - 1;
+        } else { // generate the UF2 file data on-the-fly
+            sectionIdx -= NUM_FILES - 1;
             uint32_t addr = USER_FLASH_START + sectionIdx * 256;
             if (addr < USER_FLASH_START+FLASH_SIZE) {
                 UF2_Block *bl = (void *)data;
@@ -241,21 +286,6 @@ void read_block(uint32_t block_no, uint8_t *data) {
 /* Write UF2
  *------------------------------------------------------------------*/
 
-/** uf2 upgrade complete -> inform bootloader to update setting and reset */
-static void uf2_write_complete(uint32_t numBlocks)
-{
-  led_state(STATE_WRITING_FINISHED);
-
-  dfu_update_status_t update_status;
-
-  memset(&update_status, 0, sizeof(dfu_update_status_t ));
-  update_status.status_code = DFU_UPDATE_APP_COMPLETE;
-  update_status.app_crc     = 0; // skip CRC checking with uf2 upgrade
-  update_status.app_size    = numBlocks*256;
-
-  bootloader_dfu_update_process(update_status);
-}
-
 /** Write an block
  *
  * @return number of bytes processed, only 3 following values
@@ -263,9 +293,8 @@ static void uf2_write_complete(uint32_t numBlocks)
  * 512 : write is successful
  *   0 : is busy with flashing, tinyusb stack will call write_block again with the same parameters later on
  */
-int write_block(uint32_t block_no, uint8_t *data, bool quiet/*, WriteState *state*/) {
+int write_block(uint32_t block_no, uint8_t *data, bool quiet, WriteState *state) {
     UF2_Block *bl = (void *)data;
-    WriteState* state = &_wr_state;
 
      NRF_LOG_DEBUG("Write magic: %x", bl->magicStart0);
 
@@ -318,8 +347,6 @@ int write_block(uint32_t block_no, uint8_t *data, bool quiet/*, WriteState *stat
             if (state->numWritten >= state->numBlocks) {
                 // flush last blocks
                 flash_nrf5x_flush(true);
-
-                uf2_write_complete(state->numBlocks);
             }
         }
         NRF_LOG_DEBUG("wr %d=%d (of %d)", state->numWritten, bl->blockNo, bl->numBlocks);
